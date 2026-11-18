@@ -37,9 +37,9 @@ type remoteSession struct {
 func connect() (*remoteSession, error) {
 	path := os.Getenv("REMOTE_AGENT_CONFIG")
 	if path == "" {
-		path = filepath.Join(os.Getenv("HOME"), ".config/remote-agent/config")
+		path = filepath.Join(userHome(), ".config/remote-agent/config")
 	} else if strings.HasPrefix(path, "~/") {
-		path = filepath.Join(os.Getenv("HOME"), path[2:])
+		path = filepath.Join(userHome(), path[2:])
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -75,7 +75,7 @@ func connect() (*remoteSession, error) {
 		return nil, fmt.Errorf("无效的连接超时")
 	}
 	timeout := time.Duration(seconds * float64(time.Second))
-	callback, err := knownhosts.New(filepath.Join(os.Getenv("HOME"), ".ssh/known_hosts"))
+	callback, err := knownhosts.New(filepath.Join(userHome(), ".ssh/known_hosts"))
 	if err != nil {
 		return nil, err
 	}

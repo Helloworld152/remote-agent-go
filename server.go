@@ -33,15 +33,12 @@ func serve() error {
 		return err
 	}
 	defer session.close()
-	listener, err := net.Listen("unix", socketPath())
+	listener, err := listenLocal()
 	if err != nil {
 		return err
 	}
 	defer listener.Close()
-	if err := os.Chmod(socketPath(), 0600); err != nil {
-		return err
-	}
-	pidPath := filepath.Join(os.Getenv("HOME"), ".remote-agent-go.pid")
+	pidPath := filepath.Join(userHome(), ".remote-agent-go.pid")
 	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
 		return err
 	}

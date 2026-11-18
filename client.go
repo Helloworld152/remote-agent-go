@@ -2,23 +2,16 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"time"
 )
 
-func socketPath() string {
-	return filepath.Join(os.Getenv("HOME"), ".remote-agent-go.sock")
-}
-
 func request(req Request, timeout time.Duration) (Response, error) {
 	var response Response
-	conn, err := net.DialTimeout("unix", socketPath(), time.Second)
+	conn, err := dialLocal(time.Second)
 	if err != nil {
 		return response, err
 	}
@@ -35,37 +28,17 @@ func request(req Request, timeout time.Duration) (Response, error) {
 }
 
 func startServer() error {
-	lockFile, err := os.OpenFile(filepath.Join(os.Getenv("HOME"), ".remote-agent-go.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	unlock, err := lockStart()
 	if err != nil {
 		return err
 	}
-	defer lockFile.Close()
-	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
-		return err
-	}
-	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+	defer unlock()
 
 	if _, err := request(Request{Action: "status"}, time.Second); err == nil {
 		fmt.Println("remote-agent-go 已运行")
 		return nil
 	}
-	conn, err := net.DialTimeout("unix", socketPath(), time.Second)
-	if err == nil {
-		conn.Close()
-		return fmt.Errorf("后台进程正在处理请求，请稍后重试")
-	}
-	if errors.Is(err, syscall.ECONNREFUSED) {
-		info, statErr := os.Lstat(socketPath())
-		if statErr != nil {
-			return statErr
-		}
-		if info.Mode()&os.ModeSocket == 0 {
-			return fmt.Errorf("socket 路径被其他文件占用")
-		}
-		if err := os.Remove(socketPath()); err != nil {
-			return err
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
+	if err := prepareLocal(); err != nil {
 		return err
 	}
 
@@ -73,7 +46,7 @@ func startServer() error {
 	if err != nil {
 		return err
 	}
-	logFile, err := os.OpenFile(filepath.Join(os.Getenv("HOME"), ".remote-agent-go.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	logFile, err := os.OpenFile(filepath.Join(userHome(), ".remote-agent-go.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
@@ -82,7 +55,7 @@ func startServer() error {
 	cmd := exec.Command(executable, "server")
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	configureBackground(cmd)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
